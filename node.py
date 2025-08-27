@@ -440,7 +440,15 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, required=True)
+
+    # 👇 Now --port is optional; defaults to $PORT or 5000
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("PORT", 5000)),
+        help="Port to bind (defaults to $PORT env var or 5000)"
+    )
+
     parser.add_argument("--wallet", type=str, default="wallet.json")
     parser.add_argument("--data", type=str, default="data")
     parser.add_argument("--peers", nargs="*", default=[])
@@ -551,3 +559,4 @@ class BotManager:
 
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
