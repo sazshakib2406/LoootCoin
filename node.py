@@ -25,7 +25,6 @@ RETRY_BACKOFF_BASE = 2
 RETRY_BACKOFF_MAX = 300
 WS_PATH = os.getenv("WS_PATH", "/ws")  # WebSocket path served by this node
 
-
 @dataclass
 class PeerState:
     url: str
@@ -40,7 +39,6 @@ class PeerState:
     def ok(self) -> None:
         self.failures = 0
         self.next_retry_at = 0.0
-
 
 class Node:
     def __init__(self, port: int, peers: Set[str], wallet_file: str, data_dir: str = "data"):
@@ -90,7 +88,6 @@ class Node:
     def _self_url(self) -> str:
         """Return the URL this node should advertise to peers."""
         return self.advertised_url
-
 
     # ---------------- Persistence ---------------- #
     def _load_peers_from_disk(self) -> Set[str]:
@@ -561,5 +558,6 @@ class BotManager:
                 )
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
 
 
