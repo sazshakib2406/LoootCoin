@@ -16,6 +16,16 @@ from aiohttp import web, ClientSession, WSMsgType  # HTTP + WS server & client
 from loootcoin import LoootCoin, Transaction, Block
 from wallet import load_or_create_wallet, generate_wallet, sign_message
 
+from aiohttp import web
+
+async def handle_mine(request):
+    request.app["node"].start_mining()
+    return web.json_response({"status": "mining started"})
+
+async def handle_stopmine(request):
+    request.app["node"].stop_mining()
+    return web.json_response({"status": "mining stopped"})
+
 # ---------------- Configuration / Constants ---------------- #
 PROTOCOL_VERSION = 1
 SYSTEM_SENDER = "SYSTEM"
@@ -102,14 +112,6 @@ class Node:
             return web.json_response({"error": "Missing address"}, status=400)
         balance = self.blockchain.balances.get(addr, 0.0)
         return web.json_response({"address": addr, "balance": balance, "unit": "LC"})
-
-    async def handle_mine(request):
-        request.app["node"].start_mining()
-        return web.json_response({"status": "mining started"})
-
-    async def handle_stopmine(request):
-        request.app["node"].stop_mining()
-        return web.json_response({"status": "mining stopped"})
 
     # ---------------- Properties ---------------- #
     @property
@@ -563,7 +565,7 @@ if __name__ == "__main__":
 # ---------------- BotManager (optional) ---------------- #
 class BotManager:
     """Simple bot traffic generator (for testing)."""
-    def __init__(self, node: Node, num_bots: int = 3):
+    def __init__(self, node: Node, num_bots: int = 25):
         self.node = node
         self.bots = []
         for _ in range(num_bots):
@@ -612,6 +614,7 @@ class BotManager:
                 )
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
 
 
 
