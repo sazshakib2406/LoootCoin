@@ -110,18 +110,24 @@ class LoootCoin:
             return False
         return True
 
-    def mine_block(self, miner_address):
-        if not self.transaction_pool:
-            return None
-
+       def mine_block(self, miner_address):
         index = len(self.chain)
-        previous_hash = self.chain[-1].hash
-        reward = self._calculate_reward(index)
+        previous_hash = self.chain[-1].hash if self.chain else "0"
+        reward = 10  # fixed reward per block
 
-        # coinbase transaction
-        reward_tx = Transaction("SYSTEM", miner_address, reward)
-        transactions = [reward_tx] + self.transaction_pool
+        transactions = list(self.transaction_pool)
         self.transaction_pool = []
+
+        # --- distribute reward equally among wallets ---
+        total_wallets = len(self.balances) if self.balances else 1
+        share = reward / total_wallets
+
+        if self.balances:
+            for addr in self.balances.keys():
+                self.balances[addr] = self.balances.get(addr, 0) + share
+        else:
+            # if no wallets exist yet, bootstrap with miner
+            self.balances[miner_address] = reward
 
         difficulty = self._adjust_difficulty()
         nonce = 0
@@ -132,7 +138,6 @@ class LoootCoin:
             nonce += 1
 
         self.chain.append(block)
-        self._update_balances(transactions)
         self._save_chain()
         self._save_balances()
         return block
@@ -185,3 +190,4 @@ class LoootCoin:
             return
         with open(self.balances_file, "r") as f:
             self.balances = json.load(f)
+
