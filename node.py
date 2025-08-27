@@ -45,29 +45,40 @@ class PeerState:
 class Node:
     def __init__(self, port: int, peers: Set[str], wallet_file: str, data_dir: str = "data"):
         os.makedirs(data_dir, exist_ok=True)
-        self.port = int(os.getenv("PORT", port))  # Render provides $PORT
+        self.port = port
         self.data_dir = data_dir
         self.peers_path = os.path.join(data_dir, PEERS_FILE)
 
+        # Public URL handling
+        self.public_url = os.getenv("RENDER_EXTERNAL_URL")  # Render sets this automatically
+        if self.public_url:
+            # Always use wss:// scheme + append /ws
+            self.advertised_url = self.public_url.replace("http://", "ws://").replace("https://", "wss://") + "/ws"
+        else:
+            # Local fallback
+            self.advertised_url = f"ws://127.0.0.1:{self.port}/ws"
+
+        # Peer state map
         initial_peers = set(peers or []) | self._load_peers_from_disk()
         self.peer_states: Dict[str, PeerState] = {
-            p: PeerState(p) for p in initial_peers if p != self._self_url
+            p: PeerState(p) for p in initial_peers if p != self.advertised_url
         }
 
         self.blockchain = LoootCoin(data_dir=data_dir)
+
         w = load_or_create_wallet(wallet_file)
         self.address = w["address"]
 
         self.loop: Optional[asyncio.AbstractEventLoop] = None
-        self.http_runner: Optional[web.AppRunner] = None
+        self.server: Optional[websockets.server.Serve] = None
         self.mining = False
         self._mine_future: Optional[asyncio.Future] = None
 
         self._shutdown_event: Optional[asyncio.Event] = None
         self._tasks: List[asyncio.Task] = []
 
-        # Logging
-        self.logger = logging.getLogger(f"Node:{self.port}")
+        # Logging setup
+        self.logger = logging.getLogger(f"Node:{port}")
         if not self.logger.handlers:
             handler = logging.StreamHandler()
             fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -78,11 +89,7 @@ class Node:
     # ---------------- Properties ---------------- #
     @property
     def _self_url(self) -> str:
-        """
-        Local/self URL (used to avoid adding self as peer).
-        Do NOT broadcast this to others. For broadcasting, use advertised_url.
-        """
-        return f"ws://127.0.0.1:{self.port}{WS_PATH}"
+        return self.advertised_url
 
     @property
     def advertised_url(self) -> str:
@@ -565,3 +572,4 @@ class BotManager:
                 )
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
