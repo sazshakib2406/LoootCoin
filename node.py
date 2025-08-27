@@ -514,6 +514,11 @@ if __name__ == "__main__":
     print(f"🔗 Advertised URL: {n.advertised_url}")
     print(f"💳 Address: {n.address}")
 
+        # Auto-start mining on Render
+    if os.environ.get("RENDER"):
+        n.start_mining()
+
+
     if sys.stdin.isatty():
         # Local interactive CLI
         try:
@@ -596,6 +601,7 @@ class BotManager:
                 )
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
 
 
 
