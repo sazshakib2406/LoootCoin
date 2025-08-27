@@ -1,3 +1,5 @@
+import json
+from aiohttp import web, WSMsgType
 import asyncio
 import json
 import logging
@@ -82,6 +84,25 @@ class Node:
             handler.setFormatter(fmt)
             self.logger.addHandler(handler)
         self.logger.setLevel(logging.INFO)
+
+        # ---------------- HTTP API ---------------- #
+    async def handle_supply(self, request: web.Request) -> web.Response:
+        """Return total circulating supply of LC."""
+        total_supply = sum(self.blockchain.balances.values())
+        return web.json_response({
+            "total_supply": total_supply,
+            "unit": "LC",
+            "height": len(self.blockchain.chain) - 1
+        })
+
+    async def handle_balance(self, request: web.Request) -> web.Response:
+        """Return balance for a given address (?address=...)."""
+        addr = request.query.get("address")
+        if not addr:
+            return web.json_response({"error": "Missing address"}, status=400)
+        balance = self.blockchain.balances.get(addr, 0.0)
+        return web.json_response({"address": addr, "balance": balance, "unit": "LC"})
+
 
     # ---------------- Properties ---------------- #
     @property
@@ -304,21 +325,38 @@ class Node:
     async def _main_async(self):
         self._shutdown_event = asyncio.Event()
 
-        app = await self._create_app()
-        self.http_runner = web.AppRunner(app)
-        await self.http_runner.setup()
-        site = web.TCPSite(self.http_runner, "0.0.0.0", self.port)
+        # aiohttp app (HTTP + WS on the same port)
+        app = web.Application()
+
+        # REST routes
+        app.router.add_get("/supply", self.handle_supply)
+        app.router.add_get("/balance", self.handle_balance)
+
+        # WebSocket route
+        async def ws_handler(request):
+            ws = web.WebSocketResponse()
+            await ws.prepare(request)
+            async for msg in ws:
+                if msg.type == WSMsgType.TEXT:
+                    try:
+                        data = json.loads(msg.data)
+                        await self._handler(ws, data)  # reuse existing handler
+                    except Exception as e:
+                        self.logger.warning(f"Bad WS msg: {e}")
+            return ws
+
+        app.router.add_get("/ws", ws_handler)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", self.port)
         await site.start()
 
-        self.logger.info(f"🌍 HTTP+WS server listening on 0.0.0.0:{self.port} (WS path={WS_PATH})")
-        self.logger.info(f"🔗 Advertised peer URL: {self.advertised_url}")
-
-        # background tasks
-        self._tasks.append(asyncio.create_task(self._heartbeat()))
-        self._tasks.append(asyncio.create_task(self._hello_task()))
-        await self._say_hello()
+        self.logger.info(f"🌍 HTTP+WS server listening on 0.0.0.0:{self.port} (paths: /ws, /supply, /balance)")
+        self.logger.info(f"🔗 Advertised peer URL: wss://loootcoin.onrender.com/ws")
 
         await self._shutdown_event.wait()
+
 
         # graceful shutdown
         for t in self._tasks:
@@ -558,6 +596,7 @@ class BotManager:
                 )
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
 
 
 
