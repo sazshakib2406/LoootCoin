@@ -110,7 +110,10 @@ class LoootCoin:
             return False
         return True
 
-       def mine_block(self, miner_address):
+       class LoootCoin:
+    # ... keep your existing __init__, save/load, etc. ...
+
+    def mine_block(self, miner_address):
         index = len(self.chain)
         previous_hash = self.chain[-1].hash if self.chain else "0"
         reward = 10  # fixed reward per block
@@ -141,6 +144,11 @@ class LoootCoin:
         self._save_chain()
         self._save_balances()
         return block
+
+    def total_supply(self) -> float:
+        """Return the total circulating supply of LC (sum of all balances)."""
+        return sum(self.balances.values())
+
 
     def _update_balances(self, transactions):
         for tx in transactions:
@@ -190,4 +198,5 @@ class LoootCoin:
             return
         with open(self.balances_file, "r") as f:
             self.balances = json.load(f)
+
 
