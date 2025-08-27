@@ -437,18 +437,17 @@ class Node:
 
 # ---------------- CLI Runner ---------------- #
 if __name__ == "__main__":
-    import argparse
+    import argparse, sys, time
 
     parser = argparse.ArgumentParser()
 
-    # 👇 Now --port is optional; defaults to $PORT or 5000
+    # 👇 --port now defaults to $PORT (Render) or 5000
     parser.add_argument(
         "--port",
         type=int,
         default=int(os.getenv("PORT", 5000)),
         help="Port to bind (defaults to $PORT env var or 5000)"
     )
-
     parser.add_argument("--wallet", type=str, default="wallet.json")
     parser.add_argument("--data", type=str, default="data")
     parser.add_argument("--peers", nargs="*", default=[])
@@ -463,28 +462,38 @@ if __name__ == "__main__":
     print(f"🌐 Node listening {n._self_url}")
     print(f"💳 Address: {n.address}")
 
-    try:
-        while True:
-            cmd = input("(tx/mine/stop/peers/bal/quit)> ").strip().lower()
-            if cmd == "tx":
-                to = input("recipient: ").strip()
-                amt = float(input("amount: "))
-                print("OK" if n.create_transaction(to, amt) else "FAILED")
-            elif cmd == "mine":
-                n.start_mining(); print("mining on")
-            elif cmd == "stop":
-                n.stop_mining(); print("mining off")
-            elif cmd == "peers":
-                print(sorted(n.peer_urls))
-            elif cmd == "bal":
-                from pprint import pprint; pprint(n.blockchain.balances)
-            elif cmd == "quit":
-                n.shutdown(); break
-    except KeyboardInterrupt:
-        n.shutdown()
-
+    if sys.stdin.isatty():
+        # Local mode → interactive CLI
+        try:
+            while True:
+                cmd = input("(tx/mine/stop/peers/bal/quit)> ").strip().lower()
+                if cmd == "tx":
+                    to = input("recipient: ").strip()
+                    amt = float(input("amount: "))
+                    print("OK" if n.create_transaction(to, amt) else "FAILED")
+                elif cmd == "mine":
+                    n.start_mining(); print("mining on")
+                elif cmd == "stop":
+                    n.stop_mining(); print("mining off")
+                elif cmd == "peers":
+                    print(sorted(n.peer_urls))
+                elif cmd == "bal":
+                    from pprint import pprint; pprint(n.blockchain.balances)
+                elif cmd == "quit":
+                    n.shutdown(); break
+        except KeyboardInterrupt:
+            n.shutdown()
+    else:
+        # Cloud mode → no CLI, just keep alive
+        print("🌐 Running in cloud mode (no CLI)")
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            n.shutdown()
 
 # ---------------- BotManager (optional traffic generator) ---------------- #
+
 class BotManager:
     """Simple bot traffic generator that submits signed transactions.
     Use with caution; this is purely for simulation/testing.
@@ -559,4 +568,5 @@ class BotManager:
 
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
 
