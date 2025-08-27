@@ -1,3 +1,4 @@
+from aiohttp import web
 import asyncio
 import json
 import logging
@@ -42,6 +43,26 @@ class PeerState:
 
 
 class Node:
+        # ---------------- HTTP health check ---------------- #
+    async def _http_handler(self, request):
+        return web.Response(text="🌐 LoootCoin node is running. Use a WebSocket client.")
+
+    async def _start_http_server(self):
+        """Start a tiny HTTP server so browsers & Render health check work."""
+        app = web.Application()
+        app.router.add_get("/", self._http_handler)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+
+        # Render expects HTTP on $PORT
+        port = int(os.getenv("PORT", self.port))
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+
+        self.logger.info(f"🌍 HTTP health endpoint listening on http://0.0.0.0:{port}")
+        return runner
+
     def __init__(self, port: int, peers: Set[str], wallet_file: str, data_dir: str = "data"):
         os.makedirs(data_dir, exist_ok=True)
         self.port = port
@@ -568,5 +589,6 @@ class BotManager:
 
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
 
 
