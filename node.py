@@ -304,10 +304,15 @@ class Node:
         return ok
 
     # ---------------- Server control ---------------- #
-    async def _main_async(self):
+       async def _main_async(self):
         self._shutdown_event = asyncio.Event()
+
+        # Start WebSocket server on same port
         self.server = await websockets.serve(self._handler, "0.0.0.0", self.port)
-        self.logger.info(f"🌐 Node listening on {self._self_url}")
+        self.logger.info(f"🌐 WebSocket node listening on {self._self_url}")
+
+        # Start HTTP health endpoint
+        self.http_runner = await self._start_http_server()
 
         # Periodic tasks
         self._tasks.append(asyncio.create_task(self._heartbeat()))
@@ -320,30 +325,12 @@ class Node:
         self.logger.info("Stopping server…")
         self.server.close()
         await self.server.wait_closed()
+        if self.http_runner:
+            await self.http_runner.cleanup()
         for t in self._tasks:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self.logger.info("Server stopped")
-
-    def start(self):
-        def runner():
-            self.loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self.loop)
-            self.loop.create_task(self._main_async())
-            try:
-                self.loop.run_forever()
-            finally:
-                pending = asyncio.all_tasks(self.loop)
-                for task in pending:
-                    task.cancel()
-                self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-                self.loop.close()
-        threading.Thread(target=runner, daemon=True).start()
-
-    def shutdown(self):
-        if self.loop and self._shutdown_event and not self._shutdown_event.is_set():
-            self.loop.call_soon_threadsafe(self._shutdown_event.set)
-            self.loop.call_soon_threadsafe(self.loop.stop)
 
     # ---------------- Helpers: validation/convert ---------------- #
     def _tx_from_any(self, t: Any) -> Transaction:
@@ -589,6 +576,7 @@ class BotManager:
 
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
 
 
 
