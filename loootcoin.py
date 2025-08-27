@@ -1,3 +1,4 @@
+import threading
 import hashlib
 import json
 import os
@@ -124,7 +125,10 @@ class LoootCoin:
         self.transaction_pool: List[Transaction] = []
         self.balances: Dict[str, float] = {}
 
-        self.difficulty: int = 2  # simple constant difficulty (node checks PoW via prefix zeros)
+        self.difficulty: int = 4  # simple constant difficulty (node checks PoW via prefix zeros)
+
+        self.auto_mining = False
+        self._mining_thread = None
 
         self._chain_file = os.path.join(self.data_dir, "chain.json")
         self._balances_file = os.path.join(self.data_dir, "balances.json")
@@ -209,8 +213,9 @@ class LoootCoin:
     # ---------- Mining ----------
     def mine_block(self, miner_address: str) -> Optional[Block]:
         """
-        Create a new block with PoW. Block reward = 10 LC distributed equally among all known wallets
-        via SYSTEM -> wallet reward transactions (so node's block apply will credit balances).
+        Create a new block with PoW.
+        Block reward = 20 LC distributed equally among all known wallets
+        via SYSTEM -> wallet reward transactions.
         """
         if not self.chain:
             self._create_genesis_block()
@@ -222,15 +227,15 @@ class LoootCoin:
         txs: List[Transaction] = list(self.transaction_pool)
         self.transaction_pool.clear()
 
-        # --- Reward distribution: 10 LC split equally among wallets ---
-        reward_total = 10.0
+        # --- Reward distribution: 20 LC split equally among wallets ---
+        reward_total = 20.0
         wallets = list(self.balances.keys())
         if wallets:
             share = reward_total / float(len(wallets))
             for addr in wallets:
                 txs.append(Transaction(SYSTEM_SENDER, addr, share))
         else:
-            # bootstrap: if no wallets known yet, grant full reward to miner
+            # bootstrap: if no wallets, grant full reward to miner
             txs.append(Transaction(SYSTEM_SENDER, miner_address, reward_total))
 
         # PoW loop
@@ -252,13 +257,38 @@ class LoootCoin:
                 break
             nonce += 1
 
-        # Persist chain (balances will be mutated by node when applying the block)
+        # Persist chain
         self.chain.append(block)
         self._save_chain()
-        # NOTE: Do NOT save balances here; node updates balances upon block acceptance.
         return block
+
+    # ---------- Auto mining ----------
+    def _auto_mine_loop(self, miner_address: str):
+        while self.auto_mining:
+            block = self.mine_block(miner_address)
+            print(f"[AUTO-MINER] Mined block {block.index} with hash {block.hash[:12]}...")
+            time.sleep(10)
+
+    def start_auto_mining(self, miner_address: str):
+        """Start background mining every 10 seconds."""
+        if self.auto_mining:
+            return
+        self.auto_mining = True
+        self._mining_thread = threading.Thread(
+            target=self._auto_mine_loop, args=(miner_address,), daemon=True
+        )
+        self._mining_thread.start()
+
+    def stop_auto_mining(self):
+        """Stop background mining."""
+        self.auto_mining = False
+        if self._mining_thread:
+            self._mining_thread.join(timeout=1)
+            self._mining_thread = None
+
 
     # ---------- Supply ----------
     def total_supply(self) -> float:
         """Return the total circulating supply (sum of balances)."""
         return float(sum(self.balances.values()))
+
