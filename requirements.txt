@@ -2,3 +2,5 @@ websockets
 asyncio
 cryptography
 ecdsa
+aiohttp
+
