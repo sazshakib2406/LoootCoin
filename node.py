@@ -49,16 +49,15 @@ class Node:
         self.data_dir = data_dir
         self.peers_path = os.path.join(data_dir, PEERS_FILE)
 
-        # Public URL handling
-        self.public_url = os.getenv("RENDER_EXTERNAL_URL")  # Render sets this automatically
-        if self.public_url:
-            # Always use wss:// scheme + append /ws
-            self.advertised_url = self.public_url.replace("http://", "ws://").replace("https://", "wss://") + "/ws"
+        # 🔹 Detect Render public URL (else fallback to localhost)
+        render_url = os.getenv("RENDER_EXTERNAL_URL")
+        if render_url:
+            # Ensure correct scheme (wss://) and add /ws path
+            self.advertised_url = render_url.replace("http://", "ws://").replace("https://", "wss://") + "/ws"
         else:
-            # Local fallback
             self.advertised_url = f"ws://127.0.0.1:{self.port}/ws"
 
-        # Peer state map
+        # Peer state map (exclude self)
         initial_peers = set(peers or []) | self._load_peers_from_disk()
         self.peer_states: Dict[str, PeerState] = {
             p: PeerState(p) for p in initial_peers if p != self.advertised_url
@@ -89,19 +88,9 @@ class Node:
     # ---------------- Properties ---------------- #
     @property
     def _self_url(self) -> str:
+        """Return the URL this node should advertise to peers."""
         return self.advertised_url
 
-    @property
-    def advertised_url(self) -> str:
-        """
-        What we share with peers. Set PUBLIC_WS_URL in cloud like:
-        wss://your-service.onrender.com/ws
-        """
-        return os.getenv("PUBLIC_WS_URL", self._self_url)
-
-    @property
-    def peer_urls(self) -> Set[str]:
-        return set(self.peer_states.keys())
 
     # ---------------- Persistence ---------------- #
     def _load_peers_from_disk(self) -> Set[str]:
@@ -572,4 +561,5 @@ class BotManager:
                 )
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
 
