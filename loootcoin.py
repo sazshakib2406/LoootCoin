@@ -1,5 +1,3 @@
-import hashlib, json, os, time, random
-
 class Transaction:
     def __init__(self, sender, recipient, amount, signature=None):
         self.sender = sender
@@ -198,5 +196,6 @@ class LoootCoin:
             return
         with open(self.balances_file, "r") as f:
             self.balances = json.load(f)
+
 
 
