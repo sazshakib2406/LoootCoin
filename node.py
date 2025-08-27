@@ -43,7 +43,7 @@ class PeerState:
 
 
 class Node:
-        # ---------------- HTTP health check ---------------- #
+           # ---------------- HTTP health check ---------------- #
     async def _http_handler(self, request):
         return web.Response(text="🌐 LoootCoin node is running. Use a WebSocket client.")
 
@@ -304,10 +304,10 @@ class Node:
         return ok
 
     # ---------------- Server control ---------------- #
-       async def _main_async(self):
+    async def _main_async(self):
         self._shutdown_event = asyncio.Event()
 
-        # Start WebSocket server on same port
+        # Start WebSocket server
         self.server = await websockets.serve(self._handler, "0.0.0.0", self.port)
         self.logger.info(f"🌐 WebSocket node listening on {self._self_url}")
 
@@ -576,6 +576,7 @@ class BotManager:
 
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
 
 
 
