@@ -1,3 +1,4 @@
 websockets
 asyncio
 cryptography
+ecdsa
