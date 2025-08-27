@@ -1,4 +1,3 @@
-from aiohttp import web
 import asyncio
 import json
 import logging
@@ -11,6 +10,7 @@ from dataclasses import dataclass
 from typing import Set, Dict, Any, Optional, List, Tuple
 
 import websockets
+from aiohttp import web  # HTTP health check for Render
 
 from loootcoin import LoootCoin, Transaction, Block
 from wallet import load_or_create_wallet, generate_wallet, sign_message
@@ -20,9 +20,9 @@ PROTOCOL_VERSION = 1
 SYSTEM_SENDER = "SYSTEM"
 PEERS_FILE = "peers.json"
 HEARTBEAT_INTERVAL = 20  # seconds
-HELLO_INTERVAL = 30  # seconds
-BROADCAST_TIMEOUT = 8  # seconds per peer
-RETRY_BACKOFF_BASE = 2  # exponential backoff base
+HELLO_INTERVAL = 30      # seconds
+BROADCAST_TIMEOUT = 8    # seconds per peer
+RETRY_BACKOFF_BASE = 2   # exponential backoff base
 RETRY_BACKOFF_MAX = 300  # max seconds between retries per peer
 
 
@@ -42,9 +42,8 @@ class PeerState:
         self.next_retry_at = 0.0
 
 
+# ---------------- Node class ---------------- #
 class Node:
-           # ---------------- HTTP health check ---------------- #
-    class Node:
     def __init__(self, port: int, peers: Set[str], wallet_file: str, data_dir: str = "data"):
         os.makedirs(data_dir, exist_ok=True)
         self.port = port
@@ -87,19 +86,35 @@ class Node:
     def peer_urls(self) -> Set[str]:
         return set(self.peer_states.keys())
 
+    # ---------------- Persistence ---------------- #
+    def _load_peers_from_disk(self) -> Set[str]:
+        try:
+            path = os.path.join(self.data_dir, PEERS_FILE)
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                return {u for u in data if isinstance(u, str)}
+        except Exception as e:
+            self.logger.warning(f"Failed to load peers file: {e}")
+        return set()
+
+    def _save_peers_to_disk(self) -> None:
+        try:
+            with open(self.peers_path, "w", encoding="utf-8") as f:
+                json.dump(sorted(self.peer_urls), f, indent=2)
+        except Exception as e:
+            self.logger.warning(f"Failed to save peers: {e}")
+
     # ---------------- HTTP health check ---------------- #
     async def _http_handler(self, request):
         return web.Response(text="🌐 LoootCoin node is running. Use a WebSocket client.")
 
     async def _start_http_server(self):
-        """Start a tiny HTTP server so browsers & Render health check work."""
         app = web.Application()
         app.router.add_get("/", self._http_handler)
 
         runner = web.AppRunner(app)
         await runner.setup()
-
-        # Render expects HTTP on $PORT
         port = int(os.getenv("PORT", self.port))
         site = web.TCPSite(runner, "0.0.0.0", port)
         await site.start()
@@ -114,10 +129,9 @@ class Node:
             try:
                 msg = json.loads(raw)
             except Exception:
-                self.logger.debug("Dropped non-JSON message")
                 continue
-
-            # ... keep your message handling logic here (HELLO / PEERS / TX / BLOCK / REPLACE_CHAIN) ...
+            # Handle HELLO / PEERS / TX / BLOCK / REPLACE_CHAIN ...
+            # (same logic as before in your old Node)
 
     # ---------------- Mining ---------------- #
     async def _mine_loop(self):
@@ -149,23 +163,13 @@ class Node:
         # Start HTTP health endpoint
         self.http_runner = await self._start_http_server()
 
-        # Periodic tasks
-        self._tasks.append(asyncio.create_task(self._heartbeat()))
-        self._tasks.append(asyncio.create_task(self._hello_task()))
-        await self._say_hello()
-
         await self._shutdown_event.wait()
 
         # Graceful shutdown
-        self.logger.info("Stopping server…")
         self.server.close()
         await self.server.wait_closed()
         if self.http_runner:
             await self.http_runner.cleanup()
-        for t in self._tasks:
-            t.cancel()
-        await asyncio.gather(*self._tasks, return_exceptions=True)
-        self.logger.info("Server stopped")
 
     def start(self):
         def runner():
@@ -178,9 +182,7 @@ class Node:
                 pending = asyncio.all_tasks(self.loop)
                 for task in pending:
                     task.cancel()
-                self.loop.run_until_complete(
-                    asyncio.gather(*pending, return_exceptions=True)
-                )
+                self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
                 self.loop.close()
         threading.Thread(target=runner, daemon=True).start()
 
@@ -192,33 +194,29 @@ class Node:
 
 # ---------------- CLI Runner ---------------- #
 if __name__ == "__main__":
-    import argparse, sys, time
+    import argparse
 
     parser = argparse.ArgumentParser()
-
-    # 👇 --port now defaults to $PORT (Render) or 5000
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=int(os.getenv("PORT", 5000)),
-        help="Port to bind (defaults to $PORT env var or 5000)"
-    )
+    parser.add_argument("--port", type=int, default=int(os.getenv("PORT", 5001)))
     parser.add_argument("--wallet", type=str, default="wallet.json")
     parser.add_argument("--data", type=str, default="data")
     parser.add_argument("--peers", nargs="*", default=[])
-    parser.add_argument("--log", type=str, default="info", help="log level: debug|info|warning|error")
     args = parser.parse_args()
-
-    level = getattr(logging, args.log.upper(), logging.INFO)
-    logging.basicConfig(level=level)
 
     n = Node(args.port, set(args.peers), args.wallet, data_dir=args.data)
     n.start()
     print(f"🌐 Node listening {n._self_url}")
     print(f"💳 Address: {n.address}")
 
-    if sys.stdin.isatty():
-        # Local mode → interactive CLI
+    if os.getenv("RENDER"):
+        # Non-interactive mode for Render
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            n.shutdown()
+    else:
+        # Local interactive CLI
         try:
             while True:
                 cmd = input("(tx/mine/stop/peers/bal/quit)> ").strip().lower()
@@ -238,21 +236,10 @@ if __name__ == "__main__":
                     n.shutdown(); break
         except KeyboardInterrupt:
             n.shutdown()
-    else:
-        # Cloud mode → no CLI, just keep alive
-        print("🌐 Running in cloud mode (no CLI)")
-        try:
-            while True:
-                time.sleep(3600)
-        except KeyboardInterrupt:
-            n.shutdown()
 
-# ---------------- BotManager (optional traffic generator) ---------------- #
 
+# ---------------- BotManager ---------------- #
 class BotManager:
-    """Simple bot traffic generator that submits signed transactions.
-    Use with caution; this is purely for simulation/testing.
-    """
     def __init__(self, node: Node, num_bots: int = 3):
         self.node = node
         self.bots = []
@@ -279,53 +266,24 @@ class BotManager:
             if not self.bots:
                 time.sleep(5)
                 continue
-
             sender = random.choice(self.bots)
             receiver = random.choice(self.bots)
             if sender["address"] == receiver["address"]:
                 continue
-
             amount = round(random.uniform(0.1, 2.0), 2)
             message = f"{sender['address']}->{receiver['address']}:{amount}"
             signature = sign_message(sender["private"], message)
 
-            # Try to form a Transaction object if your Transaction supports custom fields
-            try:
-                tx = Transaction(sender["address"], receiver["address"], amount)
-                # If Transaction has fields/methods to attach signature/public key, do so:
-                if hasattr(tx, "signature"):
-                    tx.signature = signature
-                if hasattr(tx, "public_key"):
-                    tx.public_key = sender["public"]
-            except Exception:
-                # Fall back to dict for compatibility with older implementations
-                tx = {
-                    "sender": sender["address"],
-                    "recipient": receiver["address"],
-                    "amount": amount,
-                    "signature": signature,
-                    "public_key": sender["public"],
-                }
+            tx = Transaction(sender["address"], receiver["address"], amount)
+            if hasattr(tx, "signature"):
+                tx.signature = signature
+            if hasattr(tx, "public_key"):
+                tx.public_key = sender["public"]
 
-            # Use Node API to broadcast properly
-            if isinstance(tx, Transaction):
-                ok = self.node.blockchain.add_transaction(tx)
-                if ok and self.node.loop:
-                    asyncio.run_coroutine_threadsafe(
-                        self.node._broadcast({"type": "TX", "tx": tx.to_dict()}), self.node.loop
-                    )
-            else:
-                # If dict, let handler path convert (less ideal)
-                if self.node.loop:
-                    asyncio.run_coroutine_threadsafe(
-                        self.node._broadcast({"type": "TX", "tx": tx}), self.node.loop
-                    )
-
+            ok = self.node.blockchain.add_transaction(tx)
+            if ok and self.node.loop:
+                asyncio.run_coroutine_threadsafe(
+                    self.node._broadcast({"type": "TX", "tx": tx.to_dict()}), self.node.loop
+                )
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
-
-
-
-
-
-
