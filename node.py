@@ -523,6 +523,10 @@ if __name__ == "__main__":
 
     n = Node(args.port, set(args.peers), args.wallet, data_dir=args.data)
     n.start()
+        # 🔥 Start automatic mining every 10 seconds
+    n.blockchain.start_auto_mining(n.address)
+    print("⛏️ Auto-mining started (10s interval, 20 LC reward)")
+
     print(f"🌍 HTTP+WS on :{n.port}  (WS path={WS_PATH})")
     print(f"🔗 Advertised URL: {n.advertised_url}")
     print(f"💳 Address: {n.address}")
@@ -614,6 +618,7 @@ class BotManager:
                 )
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
 
 
 
