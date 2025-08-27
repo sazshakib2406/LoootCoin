@@ -108,7 +108,6 @@ class LoootCoin:
             return False
         return True
 
-       class LoootCoin:
     # ... keep your existing __init__, save/load, etc. ...
 
     def mine_block(self, miner_address):
@@ -196,6 +195,7 @@ class LoootCoin:
             return
         with open(self.balances_file, "r") as f:
             self.balances = json.load(f)
+
 
 
 
