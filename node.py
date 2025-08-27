@@ -103,6 +103,15 @@ class Node:
         balance = self.blockchain.balances.get(addr, 0.0)
         return web.json_response({"address": addr, "balance": balance, "unit": "LC"})
 
+    async def handle_mine(request):
+    request.app["node"].start_mining()
+    return web.json_response({"status": "mining started"})
+    
+    async def handle_stopmine(request):
+    request.app["node"].stop_mining()
+    return web.json_response({"status": "mining stopped"})
+
+
 
     # ---------------- Properties ---------------- #
     @property
@@ -331,6 +340,10 @@ class Node:
         # REST routes
         app.router.add_get("/supply", self.handle_supply)
         app.router.add_get("/balance", self.handle_balance)
+
+        app.router.add_get("/mine", handle_mine)
+        app.router.add_get("/stopmine", handle_stopmine)
+        app["node"] = self   # 👈 store reference to the Node for handlers
 
         # WebSocket route
         async def ws_handler(request):
@@ -601,6 +614,7 @@ class BotManager:
                 )
             print(f"[BOT] {sender['name']} sent {amount} LC to {receiver['name']}")
             time.sleep(random.randint(10, 20))
+
 
 
 
